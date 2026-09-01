@@ -1,0 +1,80 @@
+flowchart TB
+    subgraph CLIENT["Experience Layer"]
+        WEB["React + Vite Console<br/>Adjuster & Ops Dashboard"]
+    end
+
+    subgraph API["API Layer"]
+        FASTAPI["FastAPI<br/>Auth · Rate Limit · OpenAPI"]
+    end
+
+    subgraph QUEUE["Async Layer"]
+        REDIS["Redis"]
+        CELERY["Celery Workers<br/>OCR · Embeddings · Long Runs"]
+    end
+
+    subgraph ORCH["Orchestration Layer"]
+        SUPERVISOR["LangGraph Supervisor<br/>Fan-out / Fan-in / Confidence Scoring"]
+    end
+
+    subgraph AGENTS["Agent Layer (LangChain tools + Pydantic AI typed I/O)"]
+        INTAKE["Intake &<br/>Redaction Agent"]
+        CODING["Entity &<br/>Coding Agent"]
+        RETRIEVAL["GraphRAG<br/>Retrieval Agent"]
+        POLICY["Policy &<br/>Coverage Agent"]
+        NECESSITY["Medical<br/>Necessity Agent"]
+        FRAUD["Fraud /<br/>Anomaly Agent"]
+        COMPLIANCE["Compliance /<br/>PHI-Guard Agent"]
+    end
+
+    subgraph DATA["Data Layer"]
+        NEO4J[("Neo4j<br/>Knowledge Graph")]
+        PGVECTOR[("Postgres + pgvector<br/>via Supabase")]
+        STORAGE[("Encrypted Object Storage<br/>Raw Documents")]
+        VAULT[("PHI Re-ID Vault")]
+    end
+
+    subgraph MODELS["Model Layer"]
+        CLAUDE["Anthropic Claude<br/>Primary Reasoning"]
+        OPENAI["OpenAI<br/>Embeddings / Secondary"]
+    end
+
+    subgraph HITL["Human-in-the-Loop Layer"]
+        QUEUE_UI["Review Queue Service"]
+        REVIEWER["Human Reviewer<br/>Front-line -> Senior -> Medical Director"]
+    end
+
+    subgraph CROSSCUT["Cross-Cutting Plane"]
+        OBS["Observability<br/>LangSmith/Langfuse · Sentry · PostHog"]
+        EVAL["Evaluation Harness<br/>RAGAS · Trajectory · LLM-Judge · Red-Team"]
+        AUDIT["Immutable Audit Log"]
+    end
+
+    WEB <--> FASTAPI
+    FASTAPI --> REDIS --> CELERY
+    CELERY --> SUPERVISOR
+    SUPERVISOR --> INTAKE --> CODING --> RETRIEVAL
+    RETRIEVAL --> POLICY
+    RETRIEVAL --> NECESSITY
+    RETRIEVAL --> FRAUD
+    POLICY --> SUPERVISOR
+    NECESSITY --> SUPERVISOR
+    FRAUD --> SUPERVISOR
+    SUPERVISOR --> COMPLIANCE --> SUPERVISOR
+
+    INTAKE --> VAULT
+    CODING <--> NEO4J
+    RETRIEVAL <--> NEO4J
+    RETRIEVAL <--> PGVECTOR
+    INTAKE --> STORAGE
+
+    AGENTS <--> CLAUDE
+    AGENTS <--> OPENAI
+
+    SUPERVISOR -- "low confidence /<br/>risk flag" --> QUEUE_UI --> REVIEWER
+    REVIEWER -- "decision + feedback" --> FASTAPI
+    SUPERVISOR -- "high confidence" --> FASTAPI
+
+    AGENTS -.-> OBS
+    AGENTS -.-> AUDIT
+    REVIEWER -.-> EVAL
+    EVAL -.-> ORCH

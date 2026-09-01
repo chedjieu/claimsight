@@ -1,0 +1,3 @@
+# Convenience wrapper — canonical file lives in infra/compose/
+include:
+  - path: infra/compose/docker-compose.yml

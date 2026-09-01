@@ -1,0 +1,75 @@
+[project]
+name = "claimsight"
+version = "0.1.0"
+description = "ClaimSight — multi-agent GenAI platform for claims and clinical intelligence"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
+  "sqlalchemy>=2.0.36",
+  "psycopg[binary]>=3.2.0",
+  "pydantic>=2.10.0",
+  "pydantic-settings>=2.6.0",
+  "neo4j>=5.26.0",
+  "langgraph>=0.2.60",
+  "langchain-core>=0.3.28",
+  "langchain-anthropic>=0.3.0",
+  "celery[redis]>=5.4.0",
+  "redis>=5.2.0",
+  "httpx>=0.28.0",
+  "python-multipart>=0.0.18",
+  "boto3>=1.35.0",
+  "cryptography>=44.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.24.0",
+  "ruff>=0.8.0",
+]
+
+[project.scripts]
+claimsight-seed = "claimsight_graphrag.seed:main"
+claimsight-api = "claimsight_api.main:run"
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = [
+  "packages/schemas",
+  "packages/prompts",
+  "packages/storage",
+  "apps/api",
+  "services/orchestrator",
+  "services/worker",
+  "services/graphrag",
+  "services/phi_guard",
+  "services/eval",
+]
+include = ["claimsight_*"]
+
+[tool.pytest.ini_options]
+testpaths = ["services/eval"]
+pythonpath = [
+  "packages/schemas",
+  "packages/prompts",
+  "packages/storage",
+  "apps/api",
+  "services/orchestrator",
+  "services/worker",
+  "services/graphrag",
+  "services/phi_guard",
+  "services/eval",
+]
+markers = [
+  "integration: needs docker compose services",
+  "llm: needs ANTHROPIC_API_KEY",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

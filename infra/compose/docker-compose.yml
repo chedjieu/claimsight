@@ -1,0 +1,134 @@
+name: claimsight
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: claimsight
+      POSTGRES_PASSWORD: claimsight
+      POSTGRES_DB: claimsight
+    ports:
+      - "5432:5432"
+    volumes:
+      - claimsight_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claimsight"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  neo4j:
+    image: neo4j:5.26-community
+    environment:
+      NEO4J_AUTH: neo4j/claimsight-dev
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1G
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - claimsight_neo4j:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: claimsight
+      MINIO_ROOT_PASSWORD: claimsight-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - claimsight_minio:/data
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile.api
+    environment:
+      DATABASE_URL: postgresql+psycopg://claimsight:claimsight@postgres:5432/claimsight
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: claimsight-dev
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: claimsight
+      S3_SECRET_KEY: claimsight-secret
+      S3_BUCKET: claimsight-docs
+      CLAIMSIGHT_CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAIMSIGHT_LLM_PROVIDER: ${CLAIMSIGHT_LLM_PROVIDER:-auto}
+      DEMO_AUTH: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../..:/app
+    command: >
+      sh -c "python -m claimsight_graphrag.seed &&
+             uvicorn claimsight_api.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile.api
+    environment:
+      DATABASE_URL: postgresql+psycopg://claimsight:claimsight@postgres:5432/claimsight
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: claimsight-dev
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAIMSIGHT_LLM_PROVIDER: ${CLAIMSIGHT_LLM_PROVIDER:-auto}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../..:/app
+    command: celery -A claimsight_api.celery_app.celery_app worker --loglevel=INFO
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile.web
+    environment:
+      VITE_API_BASE: http://localhost:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    volumes:
+      - ../../apps/web:/web
+      - /web/node_modules
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+
+volumes:
+  claimsight_pg:
+  claimsight_neo4j:
+  claimsight_minio:

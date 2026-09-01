@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claimsight-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: claimsight-api
+  template:
+    metadata:
+      labels:
+        app: claimsight-api
+    spec:
+      containers:
+        - name: api
+          image: claimsight-api:local
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: claimsight-adapters
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: claimsight-api
+spec:
+  selector:
+    app: claimsight-api
+  ports:
+    - port: 80
+      targetPort: 8000

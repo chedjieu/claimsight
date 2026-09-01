@@ -1,0 +1,5 @@
+{
+  "necessity_forbidden": ["write_graph"],
+  "policy_allowed": ["graph_traverse", "vector_search"],
+  "fraud_allowed": ["graph_traverse", "provider_stats"]
+}

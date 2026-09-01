@@ -1,0 +1,23 @@
+# Adapter map — same Python ports, different backing services.
+#
+# Local compose          GCP later                 AWS later
+# -------------------    ------------------------  ------------------------
+# postgres+pgvector      Cloud SQL (Postgres)      RDS Postgres
+# neo4j community        Neo4j Aura / GCE          Neo4j Aura / EC2
+# redis                  Memorystore               ElastiCache
+# minio (S3 API)         GCS (S3-compat or native) S3
+# docker secrets/.env    Secret Manager            Secrets Manager
+# compose api/web        Cloud Run                 ECS Fargate
+# Anthropic API          same API or Vertex        Bedrock or same API
+#
+# Do not rewrite agents or the graph schema. Swap GraphStore / ObjectStore / LlmProvider.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claimsight-adapters
+data:
+  GRAPH_STORE: aura
+  OBJECT_STORE: gcs
+  LLM_PROVIDER: anthropic
+  QUEUE: redis

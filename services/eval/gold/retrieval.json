@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "id": "step_therapy",
+      "must_retrieve_hybrid": ["CLM-PRIOR-MET", "POL-STEP-GLP1"],
+      "must_not_require_vector_prior": true,
+      "expected_recommendation": "approve"
+    },
+    {
+      "id": "knee",
+      "must_retrieve_hybrid": ["POL-COVER-KNEE", "GL-AAOS-KNEE"],
+      "expected_recommendation": "approve"
+    },
+    {
+      "id": "fraud",
+      "must_flag": ["dx_procedure_mismatch", "document_injection"],
+      "expected_route": "pending_human_review"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+stateDiagram-v2
+    [*] --> Intake
+
+    Intake: Intake & Redaction Agent<br/>OCR - PHI/PII detection - tokenize
+    Intake --> Coding
+
+    Coding: Entity & Coding Agent<br/>Extract ICD-10/CPT - write to Neo4j
+    Coding --> Retrieval
+
+    Retrieval: GraphRAG Retrieval Agent<br/>Graph traversal + vector search
+    Retrieval --> ParallelFork
+
+    state ParallelFork <<fork>>
+    ParallelFork --> Policy
+    ParallelFork --> Necessity
+    ParallelFork --> Fraud
+
+    Policy: Policy & Coverage Agent<br/>Cites policy clauses
+    Necessity: Medical Necessity Agent<br/>Cites clinical guidelines + history
+    Fraud: Fraud / Anomaly Agent<br/>Pattern + statistical + LLM reasoning
+
+    Policy --> ParallelJoin
+    Necessity --> ParallelJoin
+    Fraud --> ParallelJoin
+
+    state ParallelJoin <<join>>
+    ParallelJoin --> Supervisor
+
+    Supervisor: Supervisor Agent<br/>Synthesize - score confidence - decide route
+    Supervisor --> Compliance
+
+    Compliance: Compliance / PHI-Guard Agent<br/>Check leakage - injection - scope
+    Compliance --> Decision
+
+    state Decision <<choice>>
+    Decision --> AutoConfirm: high confidence,<br/>no risk flags
+    Decision --> HumanReview: low confidence OR<br/>agent disagreement OR<br/>risk flag OR high-value claim
+
+    AutoConfirm: Ready for Confirmation<br/>(lightweight human confirm)
+    AutoConfirm --> [*]
+
+    HumanReview: LangGraph Interrupt<br/>Durable checkpoint - review queue
+    HumanReview --> HumanDecision
+
+    HumanDecision: Human Reviewer<br/>Approve / Edit / Override
+    HumanDecision --> FeedbackCapture
+
+    FeedbackCapture: Feedback & Audit Capture<br/>Labeled example -> eval + prompt backlog
+    FeedbackCapture --> [*]
