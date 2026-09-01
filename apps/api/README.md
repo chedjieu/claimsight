@@ -18,7 +18,7 @@ uvicorn claimsight_api.main:app --reload
 
 OpenAPI: http://localhost:8000/docs
 
-Env: see `.env.example` (`DATABASE_URL`, `CLAIMSIGHT_LLM_PROVIDER`, `CLAIMSIGHT_TOKEN_BUDGET`).
+Env: copy `env.example` to `.env` (`DATABASE_URL`, `CLAIMSIGHT_LLM_PROVIDER`, `CLAIMSIGHT_TOKEN_BUDGET`). Do not commit `.env`.
 
 ## What this is not
 

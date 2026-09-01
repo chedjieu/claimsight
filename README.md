@@ -17,7 +17,7 @@ Architecture: [high-level](docs/architecture/claimsight-high-level-architecture.
 ## Quickstart (no Docker)
 
 ```bash
-cp .env.example .env
+cp env.example .env
 pip install -e ".[dev]"
 pytest -q
 uvicorn claimsight_api.main:app --reload
@@ -38,7 +38,7 @@ API docs: http://localhost:8000/docs
 ## Quickstart (Compose)
 
 ```bash
-cp .env.example .env
+cp env.example .env
 docker compose up --build
 ```
 

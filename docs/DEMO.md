@@ -4,7 +4,7 @@
 
 ## Path (8 minutes)
 
-1. `cp .env.example .env` and `pip install -e ".[dev]"` (or `docker compose up`).
+1. `cp env.example .env` and `pip install -e ".[dev]"` (or `docker compose up`).
 2. API: `uvicorn claimsight_api.main:app --reload` · UI: `cd apps/web && npm install && npm run dev`.
 3. Open http://localhost:5173.
 4. Click **Step-therapy demo**.
