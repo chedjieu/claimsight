@@ -19,5 +19,43 @@ jobs:
         env:
           CLAIMSIGHT_LLM_PROVIDER: deterministic
           CLAIMSIGHT_FORCE_MEMORY: "1"
+          CLAIMSIGHT_QA_SAMPLE_RATE: "0"
+          CLAIMSIGHT_VAULT_KEY: ci-vault-key
           DATABASE_URL: sqlite+pysqlite:///./claimsight-ci.db
         run: pytest -q
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install API
+        run: pip install -e ".[dev]"
+      - name: Start API
+        env:
+          CLAIMSIGHT_LLM_PROVIDER: deterministic
+          CLAIMSIGHT_FORCE_MEMORY: "1"
+          CLAIMSIGHT_QA_SAMPLE_RATE: "0"
+          CLAIMSIGHT_VAULT_KEY: ci-vault-key
+          DATABASE_URL: sqlite+pysqlite:///./claimsight-e2e.db
+        run: |
+          uvicorn claimsight_api.main:app --host 127.0.0.1 --port 8000 &
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8000/health && exit 0
+            sleep 0.5
+          done
+          echo "API did not become healthy" >&2
+          exit 1
+      - name: Playwright
+        working-directory: apps/web
+        env:
+          CI: "1"
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+          npx playwright test

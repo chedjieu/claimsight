@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type AuditRow, type ClaimDetail, type ClaimRow, type Metrics } from "./api";
+import GraphMap from "./GraphMap";
 
 type View = "queue" | "audit" | "ops";
 
@@ -27,6 +28,7 @@ export default function App() {
   const [actor, setActor] = useState(localStorage.getItem("claimsight-actor") || "adjuster.front");
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [audit, setAudit] = useState<AuditRow[]>([]);
+  const [live, setLive] = useState(false);
 
   async function refresh() {
     const list = await api.claims();
@@ -40,6 +42,17 @@ export default function App() {
 
   useEffect(() => {
     refresh().catch((e) => setErr(String(e)));
+  }, []);
+
+  useEffect(() => {
+    const src = `${import.meta.env.VITE_API_BASE || ""}/events`;
+    const es = new EventSource(src);
+    es.onopen = () => setLive(true);
+    es.onerror = () => setLive(false);
+    es.onmessage = () => {
+      refresh().catch(() => undefined);
+    };
+    return () => es.close();
   }, []);
 
   useEffect(() => {
@@ -118,6 +131,7 @@ export default function App() {
           </button>
         </nav>
         <div className="mast-tools">
+          <span className={`live ${live ? "on" : ""}`}>{live ? "live desk" : "polling"}</span>
           <select value={actor} onChange={(e) => setActor(e.target.value)}>
             <option value="adjuster.front">Front-line reviewer</option>
             <option value="reviewer.senior">Senior clinical</option>
@@ -173,6 +187,7 @@ export default function App() {
                     <em>{detail.recommendation || "—"}</em>
                     <span>{Math.round((detail.confidence || 0) * 100)}% confidence</span>
                     <small>{detail.route?.replaceAll("_", " ")}</small>
+                    {detail.qa_sampled && <small>QA sample</small>}
                   </div>
                 </div>
 
@@ -218,50 +233,90 @@ export default function App() {
                   </div>
                   <div>
                     <h3>Graph subgraph</h3>
-                    <pre className="graph">
-                      {JSON.stringify(
-                        {
-                          history: (subgraph.history || []).map((h: any) => ({
-                            id: h.id,
-                            cpt: h.cpt,
-                            outcome: h.outcome,
-                            date: h.service_date,
-                          })),
-                          failed_steps: subgraph.failed_steps,
-                          policies: (subgraph.policies || []).map((p: any) => p.id),
-                          guidelines: (subgraph.guidelines || []).map((g: any) => g.id),
-                          provider: subgraph.provider_stats,
-                        },
-                        null,
-                        2,
-                      )}
-                    </pre>
+                    <GraphMap subgraph={subgraph} claimId={detail.id} />
                     <h3>Redacted source</h3>
                     <pre className="graph">{String(packet.redacted_notes || "—")}</pre>
+                    {detail.permissions?.hydrate && (
+                      <button
+                        className="ghost"
+                        disabled={busy}
+                        onClick={async () => {
+                          setBusy(true);
+                          try {
+                            const d = await api.claim(detail.id, true);
+                            setDetail(d);
+                          } catch (e) {
+                            setErr(String(e));
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                      >
+                        Break-glass hydrate
+                      </button>
+                    )}
                   </div>
                 </section>
 
                 {["ready_for_confirmation", "pending_human_review"].includes(detail.status) && (
                   <section className="hitl">
                     <h3>Human decision</h3>
+                    {!detail.permissions?.decide && detail.permissions?.escalate && (
+                      <p className="muted">
+                        Specialist queue — front-line may escalate; senior clinical decides.
+                      </p>
+                    )}
                     <textarea
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
                       placeholder="Reason / clinical note (captured as labeled feedback)"
                     />
                     <div className="actions">
-                      <button disabled={busy} onClick={() => decide("approve")}>
+                      <button
+                        disabled={busy || !detail.permissions?.approve}
+                        onClick={() => decide("approve")}
+                      >
                         Approve
                       </button>
-                      <button disabled={busy} onClick={() => decide("edit_approve")}>
+                      <button
+                        disabled={busy || !detail.permissions?.approve}
+                        onClick={() => decide("edit_approve")}
+                      >
                         Edit &amp; approve
                       </button>
-                      <button disabled={busy} className="danger" onClick={() => decide("override_deny")}>
+                      <button
+                        disabled={busy || !detail.permissions?.override}
+                        className="danger"
+                        onClick={() => decide("override_deny")}
+                      >
                         Override deny
                       </button>
-                      <button disabled={busy} onClick={() => decide("escalate")}>
+                      <button
+                        disabled={busy || !detail.permissions?.escalate}
+                        onClick={() => decide("escalate")}
+                      >
                         Escalate
                       </button>
+                      {detail.permissions?.purge && (
+                        <button
+                          disabled={busy}
+                          className="ghost"
+                          onClick={async () => {
+                            setBusy(true);
+                            try {
+                              await api.purge(detail.id);
+                              setSelected(null);
+                              await refresh();
+                            } catch (e) {
+                              setErr(String(e));
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                        >
+                          Purge PHI
+                        </button>
+                      )}
                     </div>
                   </section>
                 )}
@@ -329,7 +384,16 @@ export default function App() {
                 {metrics.graph} · {metrics.llm}
               </dd>
             </div>
+            <div>
+              <dt>QA sampled</dt>
+              <dd>{metrics.qa_sampled}</dd>
+            </div>
           </dl>
+          <h3>Override rate by CPT</h3>
+          <pre>{JSON.stringify(metrics.override_rate_by_cpt, null, 2)}</pre>
+          <h3>Confidence histogram</h3>
+          <pre>{JSON.stringify(metrics.confidence_histogram, null, 2)}</pre>
+          <h3>Status counts</h3>
           <pre>{JSON.stringify(metrics.status_counts, null, 2)}</pre>
         </div>
       )}

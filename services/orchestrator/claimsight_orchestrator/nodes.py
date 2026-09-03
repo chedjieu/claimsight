@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
 
 from claimsight_graphrag.retriever import HybridRetriever
 from claimsight_orchestrator.acl import assert_tool_allowed
 from claimsight_orchestrator.llm import complete_json, estimate_tokens
+from claimsight_orchestrator.qa import should_qa_sample
 from claimsight_orchestrator.state import ClaimState
 from claimsight_phi_guard.phi import PhiGuard
 from claimsight_prompts import COMPLIANCE, FRAUD, NECESSITY, POLICY, SUPERVISOR
@@ -292,10 +292,15 @@ def supervisor_node(state: ClaimState) -> ClaimState:
         or state.cost_capped
     ):
         route = "pending_human_review"
+    if route == "ready_for_confirmation" and should_qa_sample(str(state.claim.get("id") or "")):
+        route = "pending_human_review"
+        state.qa_sampled = True
+        flags.append("qa_sample")
     rationale = (
         f"Supervisor: policy={getattr(policy, 'verdict', None)} "
         f"necessity={getattr(necessity, 'verdict', None)} fraud={getattr(fraud, 'verdict', None)}. "
-        f"agreement={agreement} evidence={evidence} flags={flags}. rec={rec} route={route}."
+        f"agreement={agreement} evidence={evidence} flags={flags}. rec={rec} route={route}"
+        f"{' qa_sample' if state.qa_sampled else ''}."
     )
     fallback = {
         "recommendation": rec,

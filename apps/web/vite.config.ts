@@ -12,6 +12,7 @@ export default defineConfig({
       "/review-queue": "http://localhost:8000",
       "/audit": "http://localhost:8000",
       "/metrics": "http://localhost:8000",
+      "/events": "http://localhost:8000",
       "/ws": { target: "ws://localhost:8000", ws: true },
     },
   },

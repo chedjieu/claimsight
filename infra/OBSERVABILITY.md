@@ -3,7 +3,7 @@
 Local:
 - Structured logs from FastAPI + LangGraph traces (`traces` on each packet)
 - Optional LangSmith when `LANGSMITH_TRACING=true`
-- `/metrics` surfaces override rate, mean confidence, mean tokens, queue depth
+- `/metrics` surfaces override rate, override-by-CPT, confidence histogram, QA samples, mean tokens, queue depth
 
 Cost cap:
 - `CLAIMSIGHT_TOKEN_BUDGET` (default 8000) is enforced in the supervisor.

@@ -43,3 +43,12 @@ def test_fraud_demo_flags_injection_and_mismatch():
         "mismatch" in f.flags for f in state.findings for _ in [0]
     )
     assert state.route == "pending_human_review"
+
+
+def test_vault_roundtrip_and_leak_scan():
+    from claimsight_phi_guard.vault import open_sealed, seal
+
+    raw = "Elena Vasquez SSN 078-05-1120"
+    token = seal(raw)
+    assert "078-05-1120" not in token
+    assert open_sealed(token) == raw

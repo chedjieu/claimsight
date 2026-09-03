@@ -6,11 +6,16 @@ import logging
 import os
 from pathlib import Path
 
+from claimsight_phi_guard.vault import open_bytes, seal_bytes
+
 log = logging.getLogger(__name__)
 
 
 class ObjectStore:
-    """Put/get claim documents. Falls back to local disk if boto is unconfigured."""
+    """Put/get claim documents. Falls back to local disk if boto is unconfigured.
+
+    Bodies are Fernet-sealed before write so disk/MinIO do not store plaintext PHI.
+    """
 
     def __init__(self) -> None:
         self.bucket = os.getenv("S3_BUCKET", "claimsight-docs")
@@ -41,24 +46,39 @@ class ObjectStore:
                 log.warning("S3 client unavailable, using disk: %s", exc)
 
     def put_bytes(self, key: str, body: bytes, content_type: str = "text/plain") -> str:
+        sealed = seal_bytes(body)
         if self._client is not None:
             try:
                 self._client.put_object(
-                    Bucket=self.bucket, Key=key, Body=body, ContentType=content_type
+                    Bucket=self.bucket, Key=key, Body=sealed, ContentType=content_type
                 )
                 return f"s3://{self.bucket}/{key}"
             except Exception as exc:  # noqa: BLE001
                 log.warning("S3 put failed, disk fallback: %s", exc)
         path = self._fallback / key.replace("/", "_")
-        path.write_bytes(body)
+        path.write_bytes(sealed)
         return str(path)
 
     def get_bytes(self, key: str) -> bytes:
+        raw = b""
         if self._client is not None:
             try:
                 obj = self._client.get_object(Bucket=self.bucket, Key=key)
-                return obj["Body"].read()
+                raw = obj["Body"].read()
             except Exception as exc:  # noqa: BLE001
                 log.debug("S3 get failed: %s", exc)
-        path = self._fallback / key.replace("/", "_")
-        return path.read_bytes() if path.exists() else b""
+        if not raw:
+            path = self._fallback / key.replace("/", "_")
+            raw = path.read_bytes() if path.exists() else b""
+        return open_bytes(raw) if raw else b""
+
+    def delete_prefix(self, prefix: str) -> None:
+        if self._client is not None:
+            try:
+                listed = self._client.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
+                for obj in listed.get("Contents") or []:
+                    self._client.delete_object(Bucket=self.bucket, Key=obj["Key"])
+            except Exception as exc:  # noqa: BLE001
+                log.debug("S3 delete skipped: %s", exc)
+        for path in self._fallback.glob(prefix.replace("/", "_") + "*"):
+            path.unlink(missing_ok=True)

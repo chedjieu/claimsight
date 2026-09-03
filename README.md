@@ -4,7 +4,7 @@
 
 ClaimSight is a multi-agent GenAI platform for health-insurance claims review. It redacts PHI before any model call, reasons over a knowledge graph plus guideline search, and produces a cited recommendation. Humans confirm or override — never an unsupervised clinical judgment.
 
-Brief (why): [ClaimSight-Capstone-Design.md](ClaimSight-Capstone-Design.md) · Plan (intent): [docs/PLAN.md](docs/PLAN.md) · As-built (reality): [docs/AS_BUILT.md](docs/AS_BUILT.md) · Demo script: [docs/DEMO.md](docs/DEMO.md)
+Brief (why): [ClaimSight-Capstone-Design.md](ClaimSight-Capstone-Design.md) · Plan (intent): [PLAN.md](PLAN.md) · As-built (reality): [docs/AS_BUILT.md](docs/AS_BUILT.md) · Demo script: [docs/DEMO.md](docs/DEMO.md)
 
 Architecture: [high-level](docs/architecture/claimsight-high-level-architecture.mermaid) · [orchestration](docs/architecture/claimsight-agent-orchestration.mermaid)
 
@@ -62,9 +62,10 @@ Console: http://localhost:5173 · API: http://localhost:8000 · Neo4j: http://lo
 | Doc | Question it answers |
 |---|---|
 | [ClaimSight-Capstone-Design.md](ClaimSight-Capstone-Design.md) | Why this product |
-| [docs/PLAN.md](docs/PLAN.md) | How we intended to build it |
+| [PLAN.md](PLAN.md) | How we intended to build it |
 | [docs/AS_BUILT.md](docs/AS_BUILT.md) | What actually exists |
 | [docs/DEMO.md](docs/DEMO.md) | Leadership walkthrough |
+| [docs/COMPLIANCE.md](docs/COMPLIANCE.md) | HIPAA-style checklist (not a certification) |
 | [apps/web/README.md](apps/web/README.md) | Reviewer console |
 | [apps/api/README.md](apps/api/README.md) | FastAPI |
 | [services/orchestrator/README.md](services/orchestrator/README.md) | LangGraph agents |

@@ -76,6 +76,8 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CLAIMSIGHT_LLM_PROVIDER: ${CLAIMSIGHT_LLM_PROVIDER:-auto}
       DEMO_AUTH: "true"
+      CLAIMSIGHT_VAULT_KEY: ${CLAIMSIGHT_VAULT_KEY:-claimsight-dev-vault-not-for-prod}
+      CLAIMSIGHT_QA_SAMPLE_RATE: "0.05"
     ports:
       - "8000:8000"
     depends_on:
@@ -104,6 +106,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CLAIMSIGHT_LLM_PROVIDER: ${CLAIMSIGHT_LLM_PROVIDER:-auto}
+      CLAIMSIGHT_VAULT_KEY: ${CLAIMSIGHT_VAULT_KEY:-claimsight-dev-vault-not-for-prod}
     depends_on:
       postgres:
         condition: service_healthy

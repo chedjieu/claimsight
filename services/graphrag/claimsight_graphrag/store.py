@@ -40,6 +40,8 @@ class GraphStore(Protocol):
     def vector_search(self, query: str, k: int = 6) -> list[dict[str, Any]]: ...
     def patient_history(self, patient_id: str) -> list[dict[str, Any]]: ...
     def provider_stats(self, provider_id: str) -> dict[str, Any]: ...
+    def record_decision(self, claim_id: str, action: str, actor: str, reason: str | None = None) -> None: ...
+    def delete_claim(self, claim_id: str) -> None: ...
     def kind(self) -> str: ...
 
 
@@ -55,6 +57,7 @@ class MemoryGraphStore:
         self.guidelines = {g["id"]: dict(g) for g in GUIDELINES}
         self.passages = list(PASSAGES)
         self.claims: dict[str, dict[str, Any]] = {}
+        self.decisions: dict[str, list[dict[str, Any]]] = defaultdict(list)
         self.by_patient: dict[str, list[str]] = defaultdict(list)
         self.by_provider: dict[str, list[str]] = defaultdict(list)
         self.seed()
@@ -138,6 +141,39 @@ class MemoryGraphStore:
             "provider_stats": self.provider_stats(prid),
         }
 
+    def record_decision(
+        self, claim_id: str, action: str, actor: str, reason: str | None = None
+    ) -> None:
+        self.decisions[claim_id].append(
+            {"claim_id": claim_id, "action": action, "actor": actor, "reason": reason}
+        )
+
+    def delete_claim(self, claim_id: str) -> None:
+        claim = self.claims.pop(claim_id, None)
+        if not claim:
+            return
+        pid = claim.get("patient_id")
+        prid = claim.get("provider_id")
+        if pid and claim_id in self.by_patient.get(pid, []):
+            self.by_patient[pid] = [i for i in self.by_patient[pid] if i != claim_id]
+        if prid and claim_id in self.by_provider.get(prid, []):
+            self.by_provider[prid] = [i for i in self.by_provider[prid] if i != claim_id]
+        self.decisions.pop(claim_id, None)
+
+
+def _parse_list(value: Any) -> list:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str) and value.startswith("["):
+        import json
+
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except Exception:  # noqa: BLE001
+            return []
+    return []
+
 
 class Neo4jGraphStore:
     def __init__(self, uri: str, user: str, password: str) -> None:
@@ -219,12 +255,19 @@ class Neo4jGraphStore:
             log.warning("Neo4j seed failed, memory remains source of truth: %s", exc)
 
     def _write_claim(self, s: Any, claim: dict[str, Any]) -> None:
+        import json
+
         s.run(
-            "MERGE (c:Claim {id:$id}) SET c.amount=$amount, c.date=$date, c.outcome=$outcome",
+            "MERGE (c:Claim {id:$id}) SET c.amount=$amount, c.date=$date, c.outcome=$outcome, "
+            "c.cpt=$cpt, c.icd10=$icd10, c.patient_id=$patient_id, c.provider_id=$provider_id",
             id=claim["id"],
             amount=claim.get("amount_usd"),
             date=claim.get("service_date"),
             outcome=claim.get("outcome"),
+            cpt=json.dumps(claim.get("cpt") or []),
+            icd10=json.dumps(claim.get("icd10") or []),
+            patient_id=claim.get("patient_id"),
+            provider_id=claim.get("provider_id"),
         )
         s.run(
             "MATCH (p:Patient {id:$pid}), (c:Claim {id:$cid}) MERGE (p)-[:HAS_CLAIM]->(c)",
@@ -262,16 +305,120 @@ class Neo4jGraphStore:
             log.debug("Neo4j upsert skipped: %s", exc)
 
     def subgraph_for_claim(self, claim: dict[str, Any]) -> dict[str, Any]:
-        return self._memory.subgraph_for_claim(claim)
+        mem = self._memory.subgraph_for_claim(claim)
+        try:
+            history = self._cypher_history(
+                str(claim.get("patient_id") or ""), str(claim.get("id") or "")
+            )
+            if history:
+                mem["history"] = history
+                mem["failed_steps"] = [
+                    h
+                    for h in history
+                    if h.get("outcome") in {"failed_therapy", "failed_conservative"}
+                ]
+            stats = self._cypher_provider_stats(str(claim.get("provider_id") or ""))
+            if stats.get("claim_count"):
+                mem["provider_stats"] = {**(mem.get("provider_stats") or {}), **stats}
+        except Exception as exc:  # noqa: BLE001
+            log.debug("Neo4j subgraph read fell back to memory: %s", exc)
+        return mem
+
+    def _cypher_history(self, patient_id: str, claim_id: str) -> list[dict[str, Any]]:
+        with self._driver.session() as s:
+            rows = s.run(
+                "MATCH (p:Patient {id:$pid})-[:HAS_CLAIM]->(c:Claim) "
+                "WHERE c.id <> $cid "
+                "RETURN c.id AS id, c.date AS service_date, c.amount AS amount_usd, "
+                "c.outcome AS outcome, c.cpt AS cpt, c.icd10 AS icd10, "
+                "c.patient_id AS patient_id, c.provider_id AS provider_id",
+                pid=patient_id,
+                cid=claim_id,
+            )
+            out = []
+            for r in rows:
+                out.append(
+                    {
+                        "id": r["id"],
+                        "patient_id": r["patient_id"] or patient_id,
+                        "provider_id": r["provider_id"],
+                        "service_date": r["service_date"],
+                        "amount_usd": r["amount_usd"],
+                        "outcome": r["outcome"],
+                        "cpt": _parse_list(r["cpt"]),
+                        "icd10": _parse_list(r["icd10"]),
+                    }
+                )
+            return out
+
+    def _cypher_provider_stats(self, provider_id: str) -> dict[str, Any]:
+        with self._driver.session() as s:
+            rec = s.run(
+                "MATCH (pr:Provider {id:$pid})-[:BILLED]->(c:Claim) "
+                "RETURN count(c) AS n, avg(c.amount) AS mean_amount",
+                pid=provider_id,
+            ).single()
+        if not rec:
+            return {}
+        return {
+            "provider_id": provider_id,
+            "claim_count": int(rec["n"] or 0),
+            "mean_amount": float(rec["mean_amount"] or 0),
+        }
 
     def vector_search(self, query: str, k: int = 6) -> list[dict[str, Any]]:
         return self._memory.vector_search(query, k)
 
     def patient_history(self, patient_id: str) -> list[dict[str, Any]]:
+        try:
+            rows = self._cypher_history(patient_id, "")
+            if rows:
+                return rows
+        except Exception as exc:  # noqa: BLE001
+            log.debug("Neo4j history read fell back to memory: %s", exc)
         return self._memory.patient_history(patient_id)
 
     def provider_stats(self, provider_id: str) -> dict[str, Any]:
-        return self._memory.provider_stats(provider_id)
+        mem = self._memory.provider_stats(provider_id)
+        try:
+            cypher = self._cypher_provider_stats(provider_id)
+            if cypher.get("claim_count"):
+                return {**mem, **cypher}
+        except Exception as exc:  # noqa: BLE001
+            log.debug("Neo4j stats read fell back to memory: %s", exc)
+        return mem
+
+    def record_decision(
+        self, claim_id: str, action: str, actor: str, reason: str | None = None
+    ) -> None:
+        self._memory.record_decision(claim_id, action, actor, reason)
+        did = f"DEC-{claim_id}-{action}"
+        try:
+            with self._driver.session() as s:
+                s.run(
+                    "MERGE (d:Decision {id:$id}) "
+                    "SET d.action=$action, d.actor=$actor, d.reason=$reason "
+                    "WITH d MATCH (c:Claim {id:$cid}) MERGE (d)-[:MADE_FOR]->(c)",
+                    id=did,
+                    action=action,
+                    actor=actor,
+                    reason=reason or "",
+                    cid=claim_id,
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.debug("Neo4j decision write skipped: %s", exc)
+
+    def delete_claim(self, claim_id: str) -> None:
+        self._memory.delete_claim(claim_id)
+        try:
+            with self._driver.session() as s:
+                s.run(
+                    "MATCH (d:Decision)-[:MADE_FOR]->(c:Claim {id:$id}) DETACH DELETE d",
+                    id=claim_id,
+                )
+                s.run("MATCH (c:Claim {id:$id}) DETACH DELETE c", id=claim_id)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("Neo4j claim delete skipped: %s", exc)
 
 
 _STORE: GraphStore | None = None

@@ -32,3 +32,4 @@ class ClaimState(BaseModel):
     model_name: str = "deterministic-graph-reasoner"
     prompt_version: str = "2026-08-31.1"
     cost_capped: bool = False
+    qa_sampled: bool = False

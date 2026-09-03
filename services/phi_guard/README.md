@@ -2,7 +2,7 @@
 
 Redact names, MRNs, SSNs, DOB, emails, phones, addresses **before** any model-shaped prompt.
 
-Re-identification map is stored on the claim row and used only for audited `hydrate=true` UI. Never sent to the LLM layer.
+Re-identification map is **Fernet-sealed** on the claim row (`vault.py`) and used only for audited `hydrate=true` (medical director). Never sent to the LLM layer.
 
 Also scans prompt-injection phrases in source documents.
 

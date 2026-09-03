@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     claimsight_token_budget: int = 8000
     claimsight_high_value_usd: float = 50000
     celery_broker_url: str = "redis://localhost:6379/1"
+    claimsight_async: bool = False
+    claimsight_rate_limit: int = 0
 
     @property
     def cors_list(self) -> list[str]:

@@ -9,7 +9,7 @@ Relationships: `HAS_CLAIM`, `HAS_DIAGNOSIS`, `FOR_PROCEDURE`, `REQUIRES`, `GOVER
 ## Stores
 
 - `MemoryGraphStore` — CI and no-Docker default
-- `Neo4jGraphStore` — seed + writes when `NEO4J_URI` is reachable
+- `Neo4jGraphStore` — seed, writes, **Cypher history/stats reads**, `Decision` nodes when `NEO4J_URI` is reachable
 
 ## Retriever
 

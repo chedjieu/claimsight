@@ -26,9 +26,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  purge: (id: string) =>
+    req<Record<string, unknown>>(`/claims/${id}`, { method: "DELETE" }),
   audit: () => req<AuditRow[]>("/audit?limit=80"),
   metrics: () => req<Metrics>("/metrics"),
   demo: (name: string) => req<{ claim_id: string }>(`/demo/${name}`, { method: "POST" }),
+};
+
+export type Permissions = {
+  decide: boolean;
+  approve: boolean;
+  override: boolean;
+  escalate: boolean;
+  hydrate: boolean;
+  purge: boolean;
 };
 
 export type ClaimRow = {
@@ -43,6 +54,9 @@ export type ClaimRow = {
   recommendation: string | null;
   confidence: number;
   route: string | null;
+  qa_sampled?: boolean;
+  specialty?: string | null;
+  permissions?: Permissions;
   ingested_at: string | null;
 };
 
@@ -73,6 +87,9 @@ export type Metrics = {
   claim_count: number;
   status_counts: Record<string, number>;
   override_rate: number;
+  override_rate_by_cpt: Record<string, number>;
+  confidence_histogram: Record<string, number>;
+  qa_sampled: number;
   mean_confidence: number;
   mean_tokens: number;
   decided: number;

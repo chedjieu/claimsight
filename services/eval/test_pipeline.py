@@ -50,3 +50,11 @@ def test_specialists_are_independently_callable():
     st = necessity_node(st)
     st = fraud_node(st)
     assert {f.agent for f in st.findings} == {"policy", "necessity", "fraud"}
+
+
+def test_graph_fans_out_parallel_specialists():
+    from claimsight_orchestrator.graph import build_graph
+
+    g = build_graph(HybridRetriever(MemoryGraphStore()))
+    names = set(g.get_graph().nodes)
+    assert {"policy", "necessity", "fraud", "gather"} <= names

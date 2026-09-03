@@ -15,6 +15,7 @@ ClaimStatus = Literal[
     "overridden",
     "denied",
     "escalated",
+    "purged",
 ]
 
 Recommendation = Literal["approve", "deny", "escalate"]

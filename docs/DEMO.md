@@ -15,6 +15,8 @@
 6. Click **Fraud demo**.
    - Dx/procedure mismatch, watchlist provider, $62k, prompt-injection in the fax.
    - PHI redacted before any model-shaped text; injection flagged; **pending human review**.
-7. Open **AI ops** for override rate, confidence, token budget.
+   - Front-line cannot override; switch actor to **Senior clinical** to deny.
+7. Open **AI ops** for override rate by CPT, confidence histogram, token budget.
+8. The subgraph panel is a live map (patient → prior claim → policy), not a JSON dump.
 
 Do not use real PHI. All names, MRNs, and SSNs are fictional.

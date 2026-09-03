@@ -79,6 +79,16 @@ button, textarea, select { font-family: inherit; }
   cursor: pointer;
 }
 .mast-tools button.danger { border-color: var(--coral); color: #f2c4be; }
+.live {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mist);
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+}
+.live.on { color: var(--teal-ink); border-color: var(--teal); }
 
 .banner {
   background: #3a1c18;
@@ -203,6 +213,34 @@ blockquote {
   font-weight: 600;
 }
 .actions button.danger { background: var(--coral); color: #fff; }
+.actions button:disabled { opacity: 0.35; cursor: not-allowed; }
+.ghost {
+  background: transparent;
+  color: var(--mist);
+  border: 1px solid var(--rule);
+  padding: 8px 10px;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.graph-map { background: #0c1116; border: 1px solid var(--rule); padding: 8px 8px 4px; }
+.graph-map svg { width: 100%; height: auto; display: block; }
+.g-edge { stroke: #3a4d5a; stroke-width: 1.2; }
+.g-node { fill: #141c23; stroke: var(--rule); }
+.g-node.patient, .g-node.provider { stroke: var(--mist); }
+.g-node.claim { fill: #14302c; stroke: var(--teal); }
+.g-node.prior { stroke: var(--amber); }
+.g-node.policy { stroke: var(--teal); }
+.g-node.guide { stroke: #7aa0c4; }
+.graph-map text {
+  fill: var(--paper);
+  font-family: var(--mono);
+  font-size: 9px;
+}
+.g-legend { display: flex; gap: 14px; font-size: 11px; color: var(--mist); margin: 6px 8px 4px; }
+.g-legend .prior { color: var(--amber); }
+.g-legend .policy { color: var(--teal-ink); }
+.g-legend .guide { color: #7aa0c4; }
 
 .plain { padding: 28px 36px; overflow: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }

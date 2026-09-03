@@ -4,8 +4,9 @@ Auth'd (demo `X-Actor`) entry point. Enqueues/runs claims, serves the review que
 
 ## Layout
 
-- `claimsight_api/main.py` — routes
-- `claimsight_api/pipeline.py` — ingest, orchestrate, decide
+- `claimsight_api/main.py` — routes, SSE `/events`, RBAC
+- `claimsight_api/pipeline.py` — ingest, orchestrate, decide, purge
+- `claimsight_api/rbac.py` — demo reviewer tiers
 - `claimsight_api/models.py` — SQLAlchemy claims / audit / eval labels
 - `claimsight_api/celery_app.py` — optional worker tasks
 

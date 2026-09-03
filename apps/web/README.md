@@ -4,7 +4,7 @@ React + Vite console for the ClaimSight review desk.
 
 ## Purpose
 
-HITL UI: claim queue, per-agent findings, citations, subgraph JSON, redacted source, approve / edit / override / escalate. AI ops and audit views.
+HITL UI: claim queue, per-agent findings, citations, subgraph map, redacted source, approve / edit / override / escalate. Live SSE refresh. AI ops (override-by-CPT, confidence histogram) and audit views.
 
 ## Run
 
@@ -13,9 +13,9 @@ npm install
 npm run dev
 ```
 
-Proxies `/claims`, `/demo`, `/metrics`, `/audit` to `http://localhost:8000`. Override with `VITE_API_BASE`.
+Proxies `/claims`, `/demo`, `/metrics`, `/audit`, `/events` to `http://localhost:8000`. Override with `VITE_API_BASE`.
 
-Actor is `X-Actor` from the masthead select (`adjuster.front` / `reviewer.senior` / `director.medical`).
+Actor is `X-Actor` from the masthead select (`adjuster.front` / `reviewer.senior` / `director.medical`). Front-line cannot override specialist-queue claims; hydrate and purge are director-only.
 
 ## What this is not
 

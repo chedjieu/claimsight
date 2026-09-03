@@ -7,9 +7,10 @@ from typing import Any
 from claimsight_api.config import settings
 from claimsight_api.db import session_scope
 from claimsight_api.deps import get_retriever
+from claimsight_api.events import publish
 from claimsight_api.models import AuditEvent, ClaimRow, EvalLabel
 from claimsight_orchestrator.graph import run_claim
-from claimsight_orchestrator.llm import model_name
+from claimsight_phi_guard.vault import open_sealed, seal
 from claimsight_storage.object_store import ObjectStore
 
 STORE = ObjectStore()
@@ -31,6 +32,7 @@ def audit(actor: str, action: str, entity_id: str, reason: str | None = None, pa
                 payload=json.dumps(payload or {}, default=str),
             )
         )
+    publish({"event": action, "claim_id": entity_id, "actor": actor})
 
 
 def ingest_claim(data: dict[str, Any], actor: str = "system") -> str:
@@ -46,10 +48,14 @@ def ingest_claim(data: dict[str, Any], actor: str = "system") -> str:
         row.cpt = json.dumps(data.get("cpt") or [])
         row.amount_usd = float(data.get("amount_usd") or 0)
         row.service_date = data.get("service_date") or ""
-        row.notes = data.get("notes") or ""
+        row.notes = seal(data.get("notes") or "")
         row.status = "queued"
         row.ingested_at = _now()
-        row.packet_json = json.dumps({"_documents": data.get("documents") or []}, default=str)
+        keys = []
+        for i, doc in enumerate(data.get("documents") or []):
+            name = doc.get("filename") if isinstance(doc, dict) else f"doc-{i}.txt"
+            keys.append(f"{cid}/{name}")
+        row.packet_json = json.dumps({"_doc_keys": keys})
     for i, doc in enumerate(data.get("documents") or []):
         text = doc.get("text") if isinstance(doc, dict) else str(doc)
         name = doc.get("filename") if isinstance(doc, dict) else f"doc-{i}.txt"
@@ -58,29 +64,27 @@ def ingest_claim(data: dict[str, Any], actor: str = "system") -> str:
     return cid
 
 
+def enqueue_or_run(claim_id: str, actor: str = "system") -> str:
+    if settings.claimsight_async:
+        from claimsight_api.celery_app import process_claim
+
+        process_claim.delay(claim_id)
+        return claim_id
+    return run_and_store(claim_id, actor=actor)
+
+
 def run_and_store(claim_id: str, actor: str = "system") -> str:
     with session_scope() as db:
         row = db.get(ClaimRow, claim_id)
         if not row:
             raise KeyError(claim_id)
         row.status = "processing"
-        payload = {
-            "id": row.id,
-            "patient_id": row.patient_id,
-            "provider_id": row.provider_id,
-            "icd10": json.loads(row.icd10 or "[]"),
-            "cpt": json.loads(row.cpt or "[]"),
-            "amount_usd": row.amount_usd,
-            "service_date": row.service_date,
-            "notes": row.notes,
-            "documents": [],
-        }
-    # re-read docs from notes only if documents not persisted in JSON; attach from original notes
-    retriever = get_retriever()
-    # documents were stored as objects; reconstruct from notes field for pipeline
-    with session_scope() as db:
-        row = db.get(ClaimRow, claim_id)
-        assert row
+        notes = open_sealed(row.notes)
+        keys = json.loads(row.packet_json or "{}").get("_doc_keys") or []
+        docs = []
+        for key in keys:
+            raw = STORE.get_bytes(key)
+            docs.append({"filename": key.rsplit("/", 1)[-1], "text": raw.decode("utf-8")})
         claim = {
             "id": row.id,
             "patient_id": row.patient_id,
@@ -89,14 +93,11 @@ def run_and_store(claim_id: str, actor: str = "system") -> str:
             "cpt": json.loads(row.cpt or "[]"),
             "amount_usd": row.amount_usd,
             "service_date": row.service_date,
-            "notes": row.notes,
-            "documents": [{"filename": "notes.txt", "text": row.notes}],
+            "notes": notes,
+            "documents": docs or [{"filename": "notes.txt", "text": notes}],
         }
-        # stash extra docs if present in packet placeholder
-        extra = json.loads(row.packet_json or "{}").get("_documents")
-        if extra:
-            claim["documents"] = extra
 
+    retriever = get_retriever()
     state = run_claim(claim, retriever, token_budget=settings.claimsight_token_budget)
     packet = {
         "claim_id": claim_id,
@@ -113,12 +114,17 @@ def run_and_store(claim_id: str, actor: str = "system") -> str:
         "token_used": state.token_used,
         "token_budget": state.token_budget,
         "cost_capped": state.cost_capped,
+        "qa_sampled": state.qa_sampled,
         "phi_findings": state.phi_findings,
         "injection_hits": state.injection_hits,
         "model_name": state.model_name,
         "prompt_version": state.prompt_version,
     }
-    status = state.route if state.route in {"ready_for_confirmation", "pending_human_review"} else "pending_human_review"
+    status = (
+        state.route
+        if state.route in {"ready_for_confirmation", "pending_human_review"}
+        else "pending_human_review"
+    )
     with session_scope() as db:
         row = db.get(ClaimRow, claim_id)
         assert row
@@ -127,7 +133,7 @@ def run_and_store(claim_id: str, actor: str = "system") -> str:
         row.confidence = state.confidence
         row.route = state.route
         row.packet_json = json.dumps(packet, default=str)
-        row.phi_mapping = json.dumps(state.phi_mapping)
+        row.phi_mapping = seal(json.dumps(state.phi_mapping))
         row.model_name = state.model_name
         row.prompt_version = state.prompt_version
         row.token_used = state.token_used
@@ -143,6 +149,17 @@ def _safe_subgraph(sub: dict[str, Any]) -> dict[str, Any]:
     out = dict(sub)
     out["patient"] = patient
     return out
+
+
+def load_phi_mapping(row: ClaimRow) -> dict[str, str]:
+    raw = open_sealed(row.phi_mapping or "")
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def decide_claim(
@@ -202,9 +219,31 @@ def decide_claim(
                 payload=json.dumps({"ai": ai_rec, "override": override}),
             )
         )
-        return {
+        result = {
             "claim_id": claim_id,
             "status": row.status,
             "recommendation": row.recommendation,
             "decided_by": actor,
         }
+    get_retriever().store.record_decision(claim_id, action, actor, reason)
+    publish({"event": f"decide:{action}", "claim_id": claim_id, "actor": actor, "status": result["status"]})
+    return result
+
+
+def purge_claim(claim_id: str, actor: str) -> dict[str, Any]:
+    with session_scope() as db:
+        row = db.get(ClaimRow, claim_id)
+        if not row:
+            raise KeyError(claim_id)
+        row.notes = ""
+        row.phi_mapping = seal("{}")
+        packet = json.loads(row.packet_json or "{}")
+        packet["redacted_notes"] = ""
+        packet["purged"] = True
+        packet["hydrated_notes_preview"] = None
+        row.packet_json = json.dumps(packet)
+        row.status = "purged"
+    STORE.delete_prefix(claim_id)
+    get_retriever().store.delete_claim(claim_id)
+    audit(actor, "purge", claim_id, reason="right-to-delete")
+    return {"claim_id": claim_id, "status": "purged"}
